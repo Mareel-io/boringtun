@@ -1,0 +1,61 @@
+name: release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.targets[0] }}
+    strategy:
+      matrix:
+        targets:
+          - [ubuntu-latest, [x86_64-unknown-linux-gnu]]
+          - [macos-latest, [x86_64-apple-darwin, aarch64-apple-darwin]]
+    env:
+      RUSTFLAGS: "-C target-feature=+crt-static"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Build
+        run: cargo build --release --target ${{ matrix.targets[1][0] }}
+      - name: Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.targets[0] }}
+          path: |
+            target/**/release/boringtun
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Directories
+        run: mkdir bin; mkdir artifacts
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: "./artifacts"
+      - name: Merge dirs
+        run: for i in ./artifacts/*; do mv "$i"/* ./bin/; rm -rf "$i"; done
+      - name: Set perms
+        run: find -type f -exec chmod 755 '{}' \;
+      - name: Archive Release
+        uses: thedoctor0/zip-release@master
+        with:
+          type: 'tar'
+          filename: 'release.tar.gz'
+          path: 'bin'
+      - name: Upload release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "release.tar.gz"
+          token: ${{ secrets.GITHUB_TOKEN }}
